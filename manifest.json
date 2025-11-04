@@ -1,12 +1,12 @@
 {
-    "display_name": "外置手机2.2",
+    "display_name": "外置手机3.0",
     "loading_order": 100,
     "requires": [],
     "optional": [],
     "js": "index.js",
     "css": "styles/main.css",
     "author": "沉淀/夜宵宵夜",
-    "version": "2.2.0",
+    "version": "3.0",
     "homePage": "https://github.com/yexiaoxiaoye/mobile.git",
     "description": "实时监控 SillyTavern 上下文变化的移动端插件，集成文件上传功能，支持数据提取和可爱手机界面"
 }
