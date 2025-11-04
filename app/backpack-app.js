@@ -29,7 +29,7 @@ if (typeof window.BackpackApp === 'undefined') {
     }
 
     init() {
-      console.log('[Backpack App] 背包应用初始化开始 - 版本 1.0 (背包物品管理)');
+      console.log('[Backpack App] 背包应用初始化开始 - 版本 2.1 (事件驱动刷新)');
 
       // 立即解析一次背包信息
       this.parseItemsFromContext();
@@ -39,56 +39,22 @@ if (typeof window.BackpackApp === 'undefined') {
         this.setupContextMonitor();
       }, 100);
 
-      console.log('[Backpack App] 背包应用初始化完成 - 版本 1.0');
+      console.log('[Backpack App] 背包应用初始化完成 - 版本 2.1');
     }
 
     // 设置上下文监控
     setupContextMonitor() {
       console.log('[Backpack App] 设置上下文监控...');
 
-      // 监听上下文变化事件
-      if (window.addEventListener) {
-        window.addEventListener('contextUpdate', event => {
-          this.handleContextChange(event);
-        });
-
-        // 监听消息更新事件
-        window.addEventListener('messageUpdate', event => {
-          this.handleContextChange(event);
-        });
-
-        // 监听聊天变化事件
-        window.addEventListener('chatChanged', event => {
-          this.handleContextChange(event);
-        });
-      }
-
-      // 减少定时检查频率，从2秒改为10秒
-      this.contextCheckInterval = setInterval(() => {
-        this.checkContextChanges();
-      }, 10000);
-
-      // 监听SillyTavern的事件系统
+      // 不再使用定时检查，只通过事件监听
+      // 监听SillyTavern的事件系统（MESSAGE_RECEIVED 和 CHAT_CHANGED）
       this.setupSillyTavernEventListeners();
     }
 
-    // 处理上下文变化
-    handleContextChange(event) {
-      console.log('[Backpack App] 上下文变化:', event);
+    // 手动刷新背包数据（在变量操作后调用）
+    refreshItemsData() {
+      console.log('[Backpack App] 🔄 手动刷新背包数据...');
       this.parseItemsFromContext();
-    }
-
-    // 检查上下文变化
-    checkContextChanges() {
-      if (!this.isAutoRenderEnabled) return;
-
-      const currentTime = Date.now();
-      if (currentTime - this.lastRenderTime < this.renderCooldown) {
-        return;
-      }
-
-      this.parseItemsFromContext();
-      this.lastRenderTime = currentTime;
     }
 
     // 设置SillyTavern事件监听器
@@ -106,25 +72,42 @@ if (typeof window.BackpackApp === 'undefined') {
         if (eventSource && event_types) {
           this.eventListenersSetup = true;
 
-          // 创建防抖函数，避免过于频繁的解析
-          const debouncedParse = this.debounce(() => {
-            this.parseItemsFromContext();
-          }, 1000);
+          // 创建延迟刷新函数（只在消息接收后刷新）
+          const handleMessageReceived = () => {
+            console.log('[Backpack App] 📨 收到 MESSAGE_RECEIVED 事件，刷新背包数据...');
+            setTimeout(() => {
+              // 先解析数据
+              this.parseItemsFromContext();
 
-          // 监听消息发送事件
-          if (event_types.MESSAGE_SENT) {
-            eventSource.on(event_types.MESSAGE_SENT, debouncedParse);
-          }
+              // 如果应用当前处于活动状态，强制刷新UI
+              const appContent = document.getElementById('app-content');
+              if (appContent && appContent.querySelector('.backpack-item-list')) {
+                console.log('[Backpack App] 🔄 强制刷新背包应用UI...');
+                appContent.innerHTML = this.getAppContent();
+                this.bindEvents();
+              }
+            }, 500);
+          };
 
-          // 监听消息接收事件
+          // 只监听消息接收事件（AI回复后）
           if (event_types.MESSAGE_RECEIVED) {
-            eventSource.on(event_types.MESSAGE_RECEIVED, debouncedParse);
+            eventSource.on(event_types.MESSAGE_RECEIVED, handleMessageReceived);
+            console.log('[Backpack App] ✅ 已注册 MESSAGE_RECEIVED 事件监听');
           }
 
-          // 监听聊天变化事件
+          // 监听聊天变化事件（切换对话时）
           if (event_types.CHAT_CHANGED) {
-            eventSource.on(event_types.CHAT_CHANGED, debouncedParse);
+            eventSource.on(event_types.CHAT_CHANGED, () => {
+              console.log('[Backpack App] 📨 聊天已切换，刷新背包数据...');
+              setTimeout(() => {
+                this.parseItemsFromContext();
+              }, 500);
+            });
+            console.log('[Backpack App] ✅ 已注册 CHAT_CHANGED 事件监听');
           }
+
+          // 保存引用以便后续清理
+          this.messageReceivedHandler = handleMessageReceived;
         } else {
           // 减少重试频率，从2秒改为5秒
           setTimeout(() => {
@@ -158,36 +141,124 @@ if (typeof window.BackpackApp === 'undefined') {
         // 更新物品列表
         if (backpackData.items.length !== this.items.length || this.hasItemsChanged(backpackData.items)) {
           this.items = backpackData.items;
-          this.updateItemList();
+          console.log('[Backpack App] 📦 背包数据已更新，物品数:', this.items.length);
+
+          // 只有在当前显示背包应用时才更新UI
+          if (this.isCurrentlyActive()) {
+            console.log('[Backpack App] 🎨 背包应用处于活动状态，更新UI...');
+            this.updateItemList();
+          } else {
+            console.log('[Backpack App] 💤 背包应用未激活，数据已更新但UI延迟渲染');
+          }
         }
       } catch (error) {
         console.error('[Backpack App] 解析背包物品信息失败:', error);
       }
     }
 
+    // 检查背包应用是否当前活动
+    isCurrentlyActive() {
+      const appContent = document.getElementById('app-content');
+      if (!appContent) return false;
+
+      // 检查是否包含背包应用的特征元素
+      return appContent.querySelector('.backpack-item-list') !== null;
+    }
+
     /**
-     * 从消息中获取当前背包数据（参考shop-app的getCurrentShopData方法）
+     * 从变量管理器获取背包数据（参考shop-app的getCurrentShopData方法）
      */
     getCurrentBackpackData() {
       try {
-        // 优先使用mobileContextEditor获取数据
-        const mobileContextEditor = window['mobileContextEditor'];
-        if (mobileContextEditor) {
-          const chatData = mobileContextEditor.getCurrentChatData();
-          if (chatData && chatData.messages && chatData.messages.length > 0) {
-            // 搜索所有消息，不限制第一条
-            const allContent = chatData.messages.map(msg => msg.mes || '').join('\n');
-            return this.parseBackpackContent(allContent);
+        // 方法1: 使用 Mvu 框架获取变量（与shop-app一致：向上查找有变量的楼层）
+        if (window.Mvu && typeof window.Mvu.getMvuData === 'function') {
+          // 获取目标消息ID（向上查找最近有AI消息且有变量的楼层）
+          let targetMessageId = 'latest';
+
+          if (typeof window.getLastMessageId === 'function' && typeof window.getChatMessages === 'function') {
+            let currentId = window.getLastMessageId();
+
+            // 向上查找AI消息（跳过用户消息）
+            while (currentId >= 0) {
+              const message = window.getChatMessages(currentId).at(-1);
+              if (message && message.role !== 'user') {
+                targetMessageId = currentId;
+                if (currentId !== window.getLastMessageId()) {
+                  console.log(`[Backpack App] 📝 向上查找到第 ${currentId} 层的AI消息`);
+                }
+                break;
+              }
+              currentId--;
+            }
+
+            if (currentId < 0) {
+              targetMessageId = 'latest';
+              console.warn('[Backpack App] ⚠️ 没有找到AI消息，使用最后一层');
+            }
+          }
+
+          console.log('[Backpack App] 使用消息ID:', targetMessageId);
+
+          // 获取变量
+          const mvuData = window.Mvu.getMvuData({ type: 'message', message_id: targetMessageId });
+          console.log('[Backpack App] 从 Mvu 获取变量数据:', mvuData);
+          console.log('[Backpack App] stat_data 存在:', !!mvuData?.stat_data);
+          if (mvuData?.stat_data) {
+            console.log('[Backpack App] stat_data 的键:', Object.keys(mvuData.stat_data));
+            console.log('[Backpack App] 道具是否存在:', !!mvuData.stat_data['道具']);
+            if (mvuData.stat_data['道具']) {
+              console.log('[Backpack App] 道具数据:', mvuData.stat_data['道具']);
+            }
+          }
+
+          // 尝试从 stat_data 读取
+          if (mvuData && mvuData.stat_data && mvuData.stat_data['道具']) {
+            const backpackData = mvuData.stat_data['道具'];
+            console.log('[Backpack App] ✅ 从 stat_data 获取到道具数据:', backpackData);
+            return this.parseBackpackData(backpackData);
+          }
+
+          // 尝试从根级别读取（如果变量不在 stat_data 中）
+          if (mvuData && mvuData['道具']) {
+            const backpackData = mvuData['道具'];
+            console.log('[Backpack App] ✅ 从根级别获取到道具数据:', backpackData);
+            return this.parseBackpackData(backpackData);
+          }
+
+          // 如果 stat_data 为空但 variables 存在，尝试从 variables 获取
+          if (mvuData && !mvuData.stat_data && window.SillyTavern) {
+            const context = window.SillyTavern.getContext ? window.SillyTavern.getContext() : window.SillyTavern;
+            if (context && context.chatMetadata && context.chatMetadata.variables) {
+              const stat_data = context.chatMetadata.variables['stat_data'];
+              if (stat_data && stat_data['道具']) {
+                console.log('[Backpack App] 从 variables.stat_data 获取道具数据');
+                return this.parseBackpackData(stat_data['道具']);
+              }
+            }
           }
         }
 
-        // 如果没有mobileContextEditor，尝试其他方式
-        const chatData = this.getChatData();
-        if (chatData && chatData.length > 0) {
-          // 合并所有消息内容进行解析
-          const allContent = chatData.map(msg => msg.mes || '').join('\n');
-          return this.parseBackpackContent(allContent);
+        // 方法2: 尝试从 SillyTavern 的上下文获取（备用）
+        if (window.SillyTavern) {
+          const context = window.SillyTavern.getContext ? window.SillyTavern.getContext() : window.SillyTavern;
+          if (context && context.chatMetadata && context.chatMetadata.variables) {
+            // 尝试从 variables.stat_data 获取
+            const stat_data = context.chatMetadata.variables['stat_data'];
+            if (stat_data && stat_data['道具']) {
+              console.log('[Backpack App] 从 context.chatMetadata.variables.stat_data 获取道具数据');
+              return this.parseBackpackData(stat_data['道具']);
+            }
+
+            // 尝试直接从 variables 获取
+            const backpackData = context.chatMetadata.variables['道具'];
+            if (backpackData && typeof backpackData === 'object') {
+              console.log('[Backpack App] 从 context.chatMetadata.variables 获取道具数据');
+              return this.parseBackpackData(backpackData);
+            }
+          }
         }
+
+        console.log('[Backpack App] 未找到道具数据');
       } catch (error) {
         console.warn('[Backpack App] 获取背包数据失败:', error);
       }
@@ -196,7 +267,77 @@ if (typeof window.BackpackApp === 'undefined') {
     }
 
     /**
-     * 从消息中实时解析背包内容
+     * 解析背包变量数据（动态读取所有分类）
+     * 道具结构：{ 消耗品: {...}, 装备: {...}, 材料: {...}, ... }
+     * 每个物品结构：{ 名称: [值, ''], 数量: [值, ''], 效果: [值, ''], 品质: [值, ''], ... }
+     */
+    parseBackpackData(backpackData) {
+      const items = [];
+
+      try {
+        // 动态遍历所有分类（不预先定义，直接读取数据中的所有键）
+        Object.keys(backpackData).forEach(category => {
+          // 跳过元数据
+          if (category === '$meta') return;
+
+          const categoryData = backpackData[category];
+          if (!categoryData || typeof categoryData !== 'object') return;
+
+          // 遍历该分类下的所有物品
+          Object.keys(categoryData).forEach(itemKey => {
+            // 跳过元数据
+            if (itemKey === '$meta') return;
+
+            const item = categoryData[itemKey];
+            if (!item || typeof item !== 'object') return;
+
+            // 提取物品数据（变量格式：[值, 描述]）
+            const getName = (field) => item[field] && Array.isArray(item[field]) ? item[field][0] : '';
+            const getNumber = (field) => {
+              const val = item[field] && Array.isArray(item[field]) ? item[field][0] : 0;
+              return typeof val === 'number' ? val : parseFloat(val) || 0;
+            };
+
+            const name = getName('名称') || itemKey;
+            const quantity = getNumber('数量');
+
+            // 跳过无效物品（没有名称或数量为0）
+            if (!name || quantity <= 0) return;
+
+            // 尝试多个可能的描述字段
+            const description = getName('效果') || getName('描述') || getName('作用') || getName('说明') || '暂无描述';
+            const quality = getName('品质') || '普通';
+
+            const newItem = {
+              id: `${category}_${itemKey}_${Date.now()}`,
+              name: name,
+              type: category, // 使用分类作为类型
+              description: description,
+              quantity: quantity,
+              image: this.getItemImage(category),
+              quality: quality, // 品质
+              category: category, // 原始分类
+              itemKey: itemKey, // 保存键名，用于后续更新
+              timestamp: new Date().toLocaleString(),
+            };
+
+            items.push(newItem);
+          });
+        });
+
+        console.log('[Backpack App] 从道具解析完成，物品数:', items.length);
+        if (items.length > 0) {
+          console.log('[Backpack App] 物品分类:', [...new Set(items.map(i => i.type))]);
+        }
+      } catch (error) {
+        console.error('[Backpack App] 解析道具数据失败:', error);
+      }
+
+      return { items };
+    }
+
+    /**
+     * 从消息中实时解析背包内容（保留作为备用方法）
      */
     parseBackpackContent(content) {
       const items = [];
@@ -256,11 +397,24 @@ if (typeof window.BackpackApp === 'undefined') {
       return false;
     }
 
-    // 获取物品图片
+    // 获取物品图片（支持道具分类）
     getItemImage(type) {
       const imageMap = {
+        // 手机系统分类
+        消耗品: '💊',
+        装备: '⚔️',
+        材料: '📦',
+        道具: '✨',
+        // 玄鉴仙族分类
+        灵资: '💎',
+        法器: '⚔️',
+        杂物: '📦',
+        功法: '📜',
+        法术: '✨',
+        丹药: '💊',
+        // 其他常见分类
         食品: '🍎',
-        食物: '🍎', // 兼容"食物"写法
+        食物: '🍎',
         饮料: '🥤',
         服装: '👔',
         数码: '📱',
@@ -273,7 +427,6 @@ if (typeof window.BackpackApp === 'undefined') {
         工具: '🔧',
         武器: '⚔️',
         药品: '💊',
-        材料: '🧱',
         宝石: '💎',
         钥匙: '🔑',
         金币: '🪙',
@@ -315,6 +468,13 @@ if (typeof window.BackpackApp === 'undefined') {
 
     // 获取应用内容
     getAppContent() {
+      // 每次打开应用时重新解析一次数据（确保显示最新内容）
+      const backpackData = this.getCurrentBackpackData();
+      if (backpackData.items.length !== this.items.length || this.hasItemsChanged(backpackData.items)) {
+        this.items = backpackData.items;
+        console.log('[Backpack App] 📦 打开应用时更新背包数据，物品数:', this.items.length);
+      }
+
       return this.renderItemList();
     }
 
@@ -342,7 +502,14 @@ if (typeof window.BackpackApp === 'undefined') {
 
       const itemCards = filteredItems
         .map(
-          item => `
+          item => {
+            // 判断是否是装备类物品（可以穿戴）
+            const isEquipment = item.type === '装备';
+            const actionButton = isEquipment
+              ? `<button class="equip-item-btn" data-item-id="${item.id}" data-item-name="${item.name}">装备</button>`
+              : `<button class="use-item-btn" data-item-id="${item.id}">使用</button>`;
+
+            return `
             <div class="backpack-item" data-item-id="${item.id}">
                 <div class="backpack-item-info">
                     <div class="backpack-item-header">
@@ -352,11 +519,12 @@ if (typeof window.BackpackApp === 'undefined') {
                     <div class="backpack-item-description">${item.description}</div>
                     <div class="backpack-item-footer">
                         <div class="backpack-item-quantity">数量: ${item.quantity}</div>
-                        <button class="use-item-btn" data-item-id="${item.id}">使用</button>
+                        ${actionButton}
                     </div>
                 </div>
             </div>
-        `,
+        `;
+          }
         )
         .join('');
 
@@ -584,6 +752,16 @@ if (typeof window.BackpackApp === 'undefined') {
         });
       });
 
+      // 装备物品按钮
+      document.querySelectorAll('.equip-item-btn').forEach(btn => {
+        btn.addEventListener('click', e => {
+          e.stopPropagation(); // 防止事件冒泡
+          const itemId = e.target?.getAttribute('data-item-id');
+          const itemName = e.target?.getAttribute('data-item-name');
+          this.equipItem(itemId, itemName);
+        });
+      });
+
       // 物品类型标签页切换
       document.querySelectorAll('.backpack-type-tab').forEach(btn => {
         btn.addEventListener('click', e => {
@@ -641,6 +819,197 @@ if (typeof window.BackpackApp === 'undefined') {
       if (!item) return;
 
       this.showUseItemModal(item);
+    }
+
+    // 装备物品（穿到身上）
+    async equipItem(itemId, itemName) {
+      try {
+        console.log('[Backpack App] 装备物品:', itemName);
+
+        // 弹出选择装备部位的对话框
+        const slot = await this.showEquipSlotModal(itemName);
+        if (!slot) {
+          console.log('[Backpack App] 用户取消装备');
+          return;
+        }
+
+        console.log('[Backpack App] 选择装备到:', slot);
+
+        // 获取目标消息ID
+        let targetMessageId = 'latest';
+        if (typeof window.getLastMessageId === 'function' && typeof window.getChatMessages === 'function') {
+          let currentId = window.getLastMessageId();
+          while (currentId >= 0) {
+            const message = window.getChatMessages(currentId).at(-1);
+            if (message && message.role !== 'user') {
+              targetMessageId = currentId;
+              break;
+            }
+            currentId--;
+          }
+        }
+
+        // 获取Mvu数据
+        const mvuData = window.Mvu.getMvuData({ type: 'message', message_id: targetMessageId });
+        if (!mvuData || !mvuData.stat_data) {
+          throw new Error('无法获取Mvu变量数据');
+        }
+
+        // 1. 检查该部位是否已有装备
+        const currentEquipment = mvuData.stat_data['用户']?.['当前着装']?.[slot]?.[0];
+        if (currentEquipment && currentEquipment.trim() !== '') {
+          const confirm = window.confirm(`该部位已装备"${currentEquipment}"，是否替换？\n（旧装备会返回背包）`);
+          if (!confirm) {
+            console.log('[Backpack App] 用户取消替换');
+            return;
+          }
+
+          // 旧装备返回背包
+          const backpackCategory = '装备';
+          const backpackPath = `道具.${backpackCategory}`;
+          const backpackItems = mvuData.stat_data['道具']?.[backpackCategory] || {};
+          const newBackpackCategory = { ...backpackItems };
+
+          if (newBackpackCategory[currentEquipment]) {
+            const currentCount = newBackpackCategory[currentEquipment]['数量']?.[0] || 0;
+            newBackpackCategory[currentEquipment] = {
+              ...newBackpackCategory[currentEquipment],
+              数量: [currentCount + 1, newBackpackCategory[currentEquipment]['数量']?.[1] || '']
+            };
+          } else {
+            newBackpackCategory[currentEquipment] = {
+              名称: [currentEquipment, ''],
+              数量: [1, ''],
+              效果: [`${slot}装备`, ''],
+              品质: ['普通', '']
+            };
+          }
+
+          await window.Mvu.setMvuVariable(mvuData, backpackPath, newBackpackCategory, {
+            reason: `${currentEquipment}返回背包`,
+            is_recursive: false
+          });
+          console.log('[Backpack App] 旧装备已返回背包:', currentEquipment);
+        }
+
+        // 2. 穿上新装备
+        await window.Mvu.setMvuVariable(mvuData, `用户.当前着装.${slot}[0]`, itemName, {
+          reason: `装备${itemName}`,
+          is_recursive: false
+        });
+        console.log('[Backpack App] 已装备到', slot);
+
+        // 3. 从背包移除（数量-1）
+        const item = this.items.find(p => p.id === itemId);
+        if (item) {
+          const backpackCategory = item.type;
+          const backpackPath = `道具.${backpackCategory}`;
+          const backpackItems = mvuData.stat_data['道具']?.[backpackCategory] || {};
+          const newBackpackCategory = { ...backpackItems };
+
+          if (newBackpackCategory[itemName]) {
+            const currentCount = newBackpackCategory[itemName]['数量']?.[0] || 0;
+            if (currentCount <= 1) {
+              // 数量为1，直接删除
+              delete newBackpackCategory[itemName];
+              console.log('[Backpack App] 物品已用完，从背包删除:', itemName);
+            } else {
+              // 数量减1
+              newBackpackCategory[itemName] = {
+                ...newBackpackCategory[itemName],
+                数量: [currentCount - 1, newBackpackCategory[itemName]['数量']?.[1] || '']
+              };
+              console.log('[Backpack App] 物品数量-1:', itemName, '剩余:', currentCount - 1);
+            }
+
+            await window.Mvu.setMvuVariable(mvuData, backpackPath, newBackpackCategory, {
+              reason: `装备${itemName}`,
+              is_recursive: false
+            });
+          }
+        }
+
+        // 4. 不再记录历史（由AI生成摘要代替）
+        // 装备操作将在AI回复的摘要中体现
+
+        // 保存更新
+        await window.Mvu.replaceMvuData(mvuData, { type: 'message', message_id: targetMessageId });
+
+        console.log('[Backpack App] ✅ 装备成功');
+        alert(`已将"${itemName}"装备到${slot}`);
+
+        // 刷新显示
+        setTimeout(() => {
+          this.refreshItemsData();
+          // 通知状态栏刷新
+          if (window.statusApp && typeof window.statusApp.refreshStatusData === 'function') {
+            window.statusApp.refreshStatusData();
+          }
+        }, 300);
+
+      } catch (error) {
+        console.error('[Backpack App] 装备失败:', error);
+        alert('装备失败: ' + error.message);
+      }
+    }
+
+    // 显示选择装备部位的对话框
+    showEquipSlotModal(itemName) {
+      return new Promise((resolve) => {
+        const slots = ['头部', '耳朵', '上衣', '下装', '内衣', '内裤', '袜子', '鞋子'];
+
+        // 创建模态框HTML
+        const modalHtml = `
+          <div class="backpack-equip-modal-overlay" id="equipModalOverlay">
+            <div class="backpack-equip-modal">
+              <div class="backpack-equip-modal-header">
+                <h3>选择装备部位</h3>
+                <button class="backpack-equip-modal-close" id="equipModalClose">✕</button>
+              </div>
+              <div class="backpack-equip-modal-body">
+                <p>将"${itemName}"装备到：</p>
+                <div class="backpack-equip-slot-list">
+                  ${slots.map(slot => `
+                    <button class="backpack-equip-slot-btn" data-slot="${slot}">${slot}</button>
+                  `).join('')}
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        // 添加到页面
+        const modalContainer = document.createElement('div');
+        modalContainer.innerHTML = modalHtml;
+        document.body.appendChild(modalContainer);
+
+        // 绑定事件
+        const overlay = document.getElementById('equipModalOverlay');
+        const closeBtn = document.getElementById('equipModalClose');
+
+        // 点击部位按钮
+        document.querySelectorAll('.backpack-equip-slot-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const slot = e.target.getAttribute('data-slot');
+            modalContainer.remove();
+            resolve(slot);
+          });
+        });
+
+        // 关闭按钮
+        closeBtn.addEventListener('click', () => {
+          modalContainer.remove();
+          resolve(null);
+        });
+
+        // 点击遮罩层关闭
+        overlay.addEventListener('click', (e) => {
+          if (e.target === overlay) {
+            modalContainer.remove();
+            resolve(null);
+          }
+        });
+      });
     }
 
     // 显示使用物品弹窗
@@ -1065,10 +1434,13 @@ if (typeof window.BackpackApp === 'undefined') {
     destroy() {
       console.log('[Backpack App] 销毁应用，清理资源');
 
-      // 清理定时器
-      if (this.contextCheckInterval) {
-        clearInterval(this.contextCheckInterval);
-        this.contextCheckInterval = null;
+      // 清理事件监听
+      if (this.eventListenersSetup && this.messageReceivedHandler) {
+        const eventSource = window['eventSource'];
+        if (eventSource && eventSource.removeListener) {
+          eventSource.removeListener('MESSAGE_RECEIVED', this.messageReceivedHandler);
+          console.log('[Backpack App] 🗑️ 已移除 MESSAGE_RECEIVED 事件监听');
+        }
       }
 
       // 清理搜索防抖定时器
@@ -1203,8 +1575,8 @@ window.backpackAppForceReload = function () {
 
   // 重新创建实例
   window.backpackApp = new BackpackApp();
-  console.log('[Backpack App] ✅ 应用已重新加载 - 版本 1.0');
+  console.log('[Backpack App] ✅ 应用已重新加载 - 版本 2.1');
 };
 
 // 初始化
-console.log('[Backpack App] 背包应用模块加载完成 - 版本 1.0 (背包物品管理)');
+console.log('[Backpack App] 背包应用模块加载完成 - 版本 2.1 (事件驱动刷新 + 变量管理器读取)');
