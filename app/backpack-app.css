@@ -680,3 +680,146 @@
   background: #5a6268;
   transform: translateY(-1px);
 }
+
+/* 装备按钮样式（绿色） */
+.equip-item-btn {
+  padding: 6px 14px;
+  background: linear-gradient(135deg, #51cf66 0%, #40c057 100%);
+  color: white;
+  border: none;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(64, 192, 87, 0.3);
+}
+
+.equip-item-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(64, 192, 87, 0.4);
+}
+
+.equip-item-btn:active {
+  transform: translateY(0);
+}
+
+/* 装备部位选择模态框 */
+.backpack-equip-modal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: equipFadeIn 0.2s;
+}
+
+@keyframes equipFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.backpack-equip-modal {
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 400px;
+  max-height: 80vh;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  animation: equipSlideUp 0.3s;
+}
+
+@keyframes equipSlideUp {
+  from {
+    transform: translateY(50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.backpack-equip-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e9ecef;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.backpack-equip-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.backpack-equip-modal-close {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.2s;
+}
+
+.backpack-equip-modal-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.backpack-equip-modal-body {
+  padding: 20px;
+}
+
+.backpack-equip-modal-body p {
+  margin: 0 0 16px 0;
+  color: #495057;
+  font-size: 14px;
+}
+
+.backpack-equip-slot-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.backpack-equip-slot-btn {
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.backpack-equip-slot-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.backpack-equip-slot-btn:active {
+  transform: translateY(0);
+}
