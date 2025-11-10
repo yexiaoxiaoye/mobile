@@ -867,7 +867,7 @@ if (typeof window.TaskApp === 'undefined') {
       try {
         console.log('[Task App] 发送查看任务消息');
 
-        const message = '<Request:Meta-instructions：接下来你要，按照当前剧情，输出至少3个任务,注意更新对应变量,不要输出重复的任务>查看任务';
+        const message = '<Request:Meta-instructions：接下来你要，按照当前剧情，输出至少3个任务,注意更新对应变量,不要输出重复的任务，注意更新任务变量>查看任务';
 
         // 使用与消息app相同的发送方式
         this.sendToSillyTavern(message);
